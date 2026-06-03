@@ -39,11 +39,15 @@ The config is per machine and survives plugin updates (it lives outside the
 plugin directory). If the configured voice isn't installed on a machine, the
 hook falls back to the system default voice instead of going silent.
 
-Quick mode switching without the full setup:
+Quick toggles without the full setup:
 
 ```
-/auto-speak:mode            # interactive menu
-/auto-speak:mode full       # switch directly
+/auto-speak:mode             # interactive menu
+/auto-speak:mode full        # switch directly
+/auto-speak:voice            # list/audition installed voices
+/auto-speak:voice zoe        # fuzzy-matches "Zoe (Premium)"
+/auto-speak:rate             # demo speeds, pick one
+/auto-speak:rate 230         # set directly
 ```
 
 Changes take effect on the next response - the hook re-reads the config every
