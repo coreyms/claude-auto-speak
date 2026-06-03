@@ -20,17 +20,24 @@ Fully local - no API keys, no network, no cost.
 /plugin install auto-speak@coreyms
 ```
 
-Restart Claude Code. Every response is now spoken.
+Restart Claude Code. Every response is now spoken with the system default
+voice, and on first launch Claude will offer to walk you through setup.
 
 ## Configuration
 
-Knobs at the top of `scripts/auto-speak.sh`:
+Run `/auto-speak:setup` - Claude walks you through checking dependencies,
+auditioning voices, and picking a speech rate and mode, then writes your
+choices to `~/.claude/auto-speak.conf`:
 
 ```bash
-VOICE="Tom (Enhanced)"   # any voice from `say -v '?'`
+VOICE="Tom (Enhanced)"   # any voice from `say -v '?'`; empty = system default
 RATE=210                 # words per minute; macOS default is ~175
 MODE="paragraph"         # sentence | paragraph | full
 ```
+
+The config is per machine and survives plugin updates (it lives outside the
+plugin directory). If the configured voice isn't installed on a machine, the
+hook falls back to the system default voice instead of going silent.
 
 - `sentence` - speaks up to the first sentence-ending punctuation
 - `paragraph` - speaks up to the first blank line

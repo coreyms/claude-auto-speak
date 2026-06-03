@@ -4,9 +4,13 @@
 # Speaks Claude's response after each turn (Stop hook)
 # Uses macOS built-in `say` (local, free) - no OpenAI API involved.
 
-VOICE="Tom (Enhanced)"
+# Defaults - override per machine in ~/.claude/auto-speak.conf (run /auto-speak:setup)
+VOICE=""            # empty = system default voice; or any name from `say -v '?'`
 RATE=210            # words per minute; macOS default is ~175
 MODE="paragraph"    # sentence | paragraph | full
+
+CONF="$HOME/.claude/auto-speak.conf"
+[ -f "$CONF" ] && . "$CONF"
 
 # Ensure homebrew tools (jq) are findable even if the hook env has a minimal PATH
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
@@ -62,7 +66,13 @@ echo "$summary" > /tmp/auto-speak-last.txt
 
 # Speak it in the FOREGROUND. Claude Code kills the hook's process group on exit,
 # so backgrounding (even with nohup/disown) gets the speak process SIGKILLed.
+# Fall back to the system default voice if the configured one isn't installed.
 # (To cut speech short at any time: killall say)
-say -v "$VOICE" -r "$RATE" "$summary" </dev/null >/dev/null 2>&1
+if [ -n "$VOICE" ]; then
+    say -v "$VOICE" -r "$RATE" "$summary" </dev/null >/dev/null 2>&1 \
+        || say -r "$RATE" "$summary" </dev/null >/dev/null 2>&1
+else
+    say -r "$RATE" "$summary" </dev/null >/dev/null 2>&1
+fi
 
 exit 0
