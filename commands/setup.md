@@ -6,6 +6,11 @@ Walk the user through configuring the auto-speak plugin on this machine. Be
 conversational and do one step at a time. The result is a config file at
 `~/.claude/auto-speak.conf`.
 
+IMPORTANT: do not use emojis anywhere in your responses during this
+walkthrough (or in any test text you pass to `say`) - your replies are being
+spoken aloud, and the speech synthesizer pronounces emojis literally
+("party popper", "rocket", etc.).
+
 ## 1. Check dependencies
 
 - Run `which jq`. If missing, tell the user to run `brew install jq` (the hook

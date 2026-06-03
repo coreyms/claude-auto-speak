@@ -42,6 +42,9 @@ clean=$(echo "$msg" | sed -E '/^```/,/^```/d' | sed -E '
     s/\[([^]]*)\]\([^)]*\)/\1/g
 ')
 
+# Strip emojis and pictographs - `say` pronounces them ("party popper", etc.)
+clean=$(echo "$clean" | perl -CSD -pe 's/[\x{1F000}-\x{1FAFF}\x{2600}-\x{27BF}\x{2B00}-\x{2BFF}\x{FE00}-\x{FE0F}\x{200D}\x{2700}-\x{27BF}]//g' 2>/dev/null || echo "$clean")
+
 case "$MODE" in
     sentence)
         # First sentence: flatten, cut at first . ! or ? (cap 300 chars as backstop)
@@ -63,7 +66,7 @@ case "$MODE" in
         # remember plugin uses). Costs a small haiku call per turn.
         if command -v claude >/dev/null 2>&1; then
             summary=$(echo "$clean" | (cd /tmp && env -u CLAUDECODE claude -p --model haiku \
-                "Condense this assistant response into one to three short conversational sentences to be spoken aloud to the user. Lead with the bottom line. If the response asks the user any questions or needs a decision, you MUST include that. Output ONLY the text to speak - no preamble, no markdown.") \
+                "Condense this assistant response into one to three short conversational sentences to be spoken aloud to the user. Lead with the bottom line. If the response asks the user any questions or needs a decision, you MUST include that. Output ONLY the text to speak - no preamble, no markdown, and absolutely no emojis (a speech synthesizer pronounces them literally).") \
                 2>/dev/null | tr '\n' ' ')
         fi
         # Fall back to first paragraph if the CLI is missing or returned nothing
