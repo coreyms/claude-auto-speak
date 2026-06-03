@@ -1,0 +1,17 @@
+{
+  "name": "auto-speak",
+  "version": "1.0.0",
+  "description": "Speaks Claude's responses aloud after each turn using macOS built-in `say` - fully local, no API keys, no cost.",
+  "author": {
+    "name": "Corey Stoker"
+  },
+  "license": "MIT",
+  "keywords": [
+    "tts",
+    "text-to-speech",
+    "macos",
+    "say",
+    "accessibility",
+    "voice"
+  ]
+}

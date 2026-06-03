@@ -1,0 +1,13 @@
+{
+  "name": "corey-plugins",
+  "owner": {
+    "name": "Corey Stoker"
+  },
+  "plugins": [
+    {
+      "name": "auto-speak",
+      "source": "./",
+      "description": "Speaks Claude's responses aloud after each turn using macOS built-in `say` - fully local, no API keys, no cost."
+    }
+  ]
+}
