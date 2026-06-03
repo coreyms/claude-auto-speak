@@ -33,6 +33,7 @@ choices to `~/.claude/auto-speak.conf`:
 VOICE="Tom (Enhanced)"   # any voice from `say -v '?'`; empty = system default
 RATE=210                 # words per minute; macOS default is ~175
 MODE="paragraph"         # sentence | paragraph | full | summary
+TIMBRE=""                # pitch base (~30 deep to ~65 bright); empty = natural
 ```
 
 The config is per machine and survives plugin updates (it lives outside the
@@ -48,6 +49,8 @@ Quick toggles without the full setup:
 /auto-speak:voice zoe        # fuzzy-matches "Zoe (Premium)"
 /auto-speak:rate             # demo speeds, pick one
 /auto-speak:rate 230         # set directly
+/auto-speak:timbre           # demo pitch bases, pick one
+/auto-speak:timbre 35        # deeper; 'default' restores natural pitch
 ```
 
 Changes take effect on the next response - the hook re-reads the config every
@@ -64,6 +67,13 @@ turn.
   hook's headless-session filter already ignores.)
 
 To stop playback at any time: `killall say`
+
+## Pair it with voice input
+
+This plugin covers the speaking half of the conversation. For the listening
+half, Claude Code has a built-in `/voice` command (a native setting, not part
+of this plugin) that lets you talk to Claude instead of typing. With both
+enabled, the loop is fully hands-free: you speak, Claude answers out loud.
 
 ## How it works
 

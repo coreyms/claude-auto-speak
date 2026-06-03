@@ -8,6 +8,7 @@
 VOICE=""            # empty = system default voice; or any name from `say -v '?'`
 RATE=210            # words per minute; macOS default is ~175
 MODE="paragraph"    # sentence | paragraph | full | summary
+TIMBRE=""           # pitch base (~30 deep to ~65 bright); empty = voice default
 
 CONF="$HOME/.claude/auto-speak.conf"
 [ -f "$CONF" ] && . "$CONF"
@@ -81,6 +82,10 @@ esac
 
 # Keep a record of the last spoken text (for diagnosing any mystery audio)
 echo "$summary" > /tmp/auto-speak-last.txt
+
+# Apply timbre via Apple's embedded speech command [[pbas N]] (pitch base).
+# Honored by the Enhanced/Premium voices; harmless if a voice ignores it.
+[ -n "$TIMBRE" ] && summary="[[pbas $TIMBRE]] $summary"
 
 # Speak it in the FOREGROUND. Claude Code kills the hook's process group on exit,
 # so backgrounding (even with nohup/disown) gets the speak process SIGKILLed.

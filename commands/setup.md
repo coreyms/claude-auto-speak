@@ -69,5 +69,11 @@ echo '{"cwd":"'"$PWD"'","last_assistant_message":"Setup is complete. This is how
 ```
 
 Confirm the user heard it. Remind them: settings live in
-`~/.claude/auto-speak.conf` (re-run this command anytime to change them), and
-`killall say` stops playback mid-readout.
+`~/.claude/auto-speak.conf` (re-run this command anytime to change them),
+quick toggles exist (`/auto-speak:mode`, `/auto-speak:voice`,
+`/auto-speak:rate`, `/auto-speak:timbre`), and `killall say` stops playback
+mid-readout.
+
+Finally, mention that Claude Code has a native `/voice` command (not part of
+this plugin) for talking to Claude instead of typing - paired with
+auto-speak, the conversation becomes fully hands-free in both directions.
