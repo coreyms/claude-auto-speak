@@ -16,7 +16,7 @@ Fully local - no API keys, no network, no cost.
 ## Install
 
 ```
-/plugin marketplace add <your-github-user>/claude-auto-speak
+/plugin marketplace add coreyms/claude-auto-speak
 /plugin install auto-speak@corey-plugins
 ```
 
