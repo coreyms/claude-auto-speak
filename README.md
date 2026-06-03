@@ -17,7 +17,7 @@ Fully local - no API keys, no network, no cost.
 
 ```
 /plugin marketplace add coreyms/claude-auto-speak
-/plugin install auto-speak@corey-plugins
+/plugin install auto-speak@coreyms
 ```
 
 Restart Claude Code. Every response is now spoken.
