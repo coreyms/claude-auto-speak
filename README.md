@@ -39,6 +39,16 @@ The config is per machine and survives plugin updates (it lives outside the
 plugin directory). If the configured voice isn't installed on a machine, the
 hook falls back to the system default voice instead of going silent.
 
+Quick mode switching without the full setup:
+
+```
+/auto-speak:mode            # interactive menu
+/auto-speak:mode full       # switch directly
+```
+
+Changes take effect on the next response - the hook re-reads the config every
+turn.
+
 - `sentence` - speaks up to the first sentence-ending punctuation
 - `paragraph` - speaks up to the first blank line
 - `full` - speaks the whole response (code blocks are stripped)
