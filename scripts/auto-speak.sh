@@ -7,13 +7,14 @@
 # Defaults - override per machine in ~/.claude/auto-speak.conf (run /auto-speak:setup)
 VOICE=""            # empty = system default voice; or any name from `say -v '?'`
 RATE=210            # words per minute; macOS default is ~175
-MODE="paragraph"    # sentence | paragraph | full
+MODE="paragraph"    # sentence | paragraph | full | summary
 
 CONF="$HOME/.claude/auto-speak.conf"
 [ -f "$CONF" ] && . "$CONF"
 
-# Ensure homebrew tools (jq) are findable even if the hook env has a minimal PATH
-export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+# Ensure homebrew tools (jq) and the claude CLI are findable even if the hook
+# env has a minimal PATH
+export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH"
 
 json=$(cat)
 
@@ -53,6 +54,20 @@ case "$MODE" in
         ;;
     full)
         summary=$(echo "$clean" | tr '\n' ' ')
+        ;;
+    summary)
+        # Let a small Claude decide what to say: condense the response and
+        # surface any questions. Runs headless from /tmp so its own Stop hook
+        # is filtered out by the cwd guard above (no recursion). CLAUDECODE is
+        # unset so the CLI doesn't think it's nested (same pattern the
+        # remember plugin uses). Costs a small haiku call per turn.
+        if command -v claude >/dev/null 2>&1; then
+            summary=$(echo "$clean" | (cd /tmp && env -u CLAUDECODE claude -p --model haiku \
+                "Condense this assistant response into one to three short conversational sentences to be spoken aloud to the user. Lead with the bottom line. If the response asks the user any questions or needs a decision, you MUST include that. Output ONLY the text to speak - no preamble, no markdown.") \
+                2>/dev/null | tr '\n' ' ')
+        fi
+        # Fall back to first paragraph if the CLI is missing or returned nothing
+        [ -z "$summary" ] && summary=$(echo "$clean" | awk 'BEGIN{RS=""} NR==1' | tr '\n' ' ')
         ;;
     *)
         summary=$(echo "$clean" | tr '\n' ' ' | head -c 250)

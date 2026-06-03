@@ -33,10 +33,14 @@ Demo a few speeds with the chosen voice, e.g. 175 (macOS default), 210, 230:
 
 ## 4. Pick a mode
 
-Explain the three options:
+Explain the four options:
 - `sentence` - speaks just the first sentence (a spoken headline)
 - `paragraph` - speaks up to the first blank line (recommended default)
 - `full` - reads the entire response (code blocks are stripped)
+- `summary` - a small headless Claude (haiku) condenses each response into a
+  couple of spoken sentences and always includes any questions directed at
+  the user. Best experience, but adds a few seconds of latency and a small
+  per-turn API/usage cost. Mention both trade-offs before the user picks it.
 
 ## 5. Write the config
 

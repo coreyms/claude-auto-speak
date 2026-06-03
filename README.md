@@ -32,7 +32,7 @@ choices to `~/.claude/auto-speak.conf`:
 ```bash
 VOICE="Tom (Enhanced)"   # any voice from `say -v '?'`; empty = system default
 RATE=210                 # words per minute; macOS default is ~175
-MODE="paragraph"         # sentence | paragraph | full
+MODE="paragraph"         # sentence | paragraph | full | summary
 ```
 
 The config is per machine and survives plugin updates (it lives outside the
@@ -42,6 +42,12 @@ hook falls back to the system default voice instead of going silent.
 - `sentence` - speaks up to the first sentence-ending punctuation
 - `paragraph` - speaks up to the first blank line
 - `full` - speaks the whole response (code blocks are stripped)
+- `summary` - a headless `claude -p --model haiku` condenses the response into
+  a couple of spoken sentences, always surfacing any questions Claude asked
+  you. Requires the `claude` CLI; adds a small per-turn cost and a few seconds
+  of latency before speech. Falls back to `paragraph` if the CLI is
+  unavailable. (Recursion-safe: the headless run executes from /tmp, which the
+  hook's headless-session filter already ignores.)
 
 To stop playback at any time: `killall say`
 
