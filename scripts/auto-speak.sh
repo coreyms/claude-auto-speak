@@ -19,12 +19,55 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH"
 
 json=$(cat)
 
-# Skip headless/background sessions (e.g. the remember plugin runs `claude -p`
-# from /tmp to write memory notes - without this, the hook reads those aloud).
-# User-scoped Stop hooks fire for EVERY claude session, not just interactive ones.
 cwd=$(echo "$json" | jq -r '.cwd // ""' 2>/dev/null)
+
+# Record why a session was NOT spoken (diagnosing missing audio); see also
+# /tmp/auto-speak-last.txt for what WAS spoken (diagnosing mystery audio).
+skip() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') session=${CLAUDE_CODE_SESSION_ID:-?} cwd=${cwd:-?} skipped: $1" > /tmp/auto-speak-skip.txt
+    exit 0
+}
+
+# ---- Speak ONLY for sessions the user is actually interacting with ----
+# User-scoped Stop hooks fire for EVERY claude session on the machine, not just
+# the terminals the user is watching. Known offenders: plugin-spawned `claude -p`
+# children (remember writes memory notes from its own plugin dir), SDK-driven
+# background agents, scheduled/cron runs. Multiple concurrent INTERACTIVE
+# sessions all speak - that is intended.
+
+# Gate 0 - mute switch: `touch ~/.claude/auto-speak-mute` silences everything
+# (and `killall say` cuts speech already in flight); rm the file to resume.
+[ -f "$HOME/.claude/auto-speak-mute" ] && skip "muted by ~/.claude/auto-speak-mute"
+
+# Gate 1 - headless entrypoints. Interactive terminal sessions run with
+# CLAUDE_CODE_ENTRYPOINT=cli; `claude -p` and SDK-driven agents get sdk-*
+# values. Hooks inherit the owning session's environment.
+case "${CLAUDE_CODE_ENTRYPOINT:-}" in
+    sdk*) skip "headless entrypoint $CLAUDE_CODE_ENTRYPOINT" ;;
+esac
+
+# Gate 2 - no controlling terminal. Walk up to the claude process that fired
+# this hook: interactive sessions sit on a tty (ttysNNN); programmatically
+# spawned ones are detached (ps tty "??"). If no claude ancestor is found
+# (unexpected install shapes), fail open and rely on Gate 1 rather than
+# muting every session.
+p=$PPID
+i=0
+while [ -n "$p" ] && [ "$p" -gt 1 ] 2>/dev/null && [ "$i" -lt 8 ]; do
+    case "$(ps -o comm= -p "$p" 2>/dev/null)" in
+        claude|*/claude)
+            tty=$(ps -o tty= -p "$p" 2>/dev/null | tr -d '[:space:]')
+            case "$tty" in ''|'??') skip "claude (pid $p) has no tty" ;; esac
+            break
+            ;;
+    esac
+    p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d '[:space:]')
+    i=$((i+1))
+done
+
+# Gate 3 - legacy cwd guard, kept as a cheap extra layer.
 case "$cwd" in
-    /tmp|/tmp/*|/private/tmp|/private/tmp/*) exit 0 ;;
+    /tmp|/tmp/*|/private/tmp|/private/tmp/*) skip "cwd under /tmp" ;;
 esac
 
 # Claude Code sends the response text as last_assistant_message
@@ -80,8 +123,12 @@ esac
 
 [ -z "$summary" ] && exit 0
 
-# Keep a record of the last spoken text (for diagnosing any mystery audio)
-echo "$summary" > /tmp/auto-speak-last.txt
+# Keep a record of the last spoken text + which session it came from
+# (for diagnosing any mystery audio)
+{
+    echo "$(date '+%Y-%m-%d %H:%M:%S') session=${CLAUDE_CODE_SESSION_ID:-?} cwd=${cwd:-?}"
+    echo "$summary"
+} > /tmp/auto-speak-last.txt
 
 # Apply timbre via Apple's embedded speech command [[pbas N]] (pitch base).
 # Honored by the Enhanced/Premium voices; harmless if a voice ignores it.

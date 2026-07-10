@@ -63,10 +63,31 @@ turn.
   a couple of spoken sentences, always surfacing any questions Claude asked
   you. Requires the `claude` CLI; adds a small per-turn cost and a few seconds
   of latency before speech. Falls back to `paragraph` if the CLI is
-  unavailable. (Recursion-safe: the headless run executes from /tmp, which the
-  hook's headless-session filter already ignores.)
+  unavailable. (Recursion-safe: the headless run is filtered out by the
+  background-session gates below.)
 
 To stop playback at any time: `killall say`
+
+To mute entirely (e.g. while a fleet of agents is running):
+`touch ~/.claude/auto-speak-mute` - remove the file to resume.
+
+## Which sessions get spoken
+
+Only sessions you are actually interacting with. User-scoped Stop hooks fire
+for **every** claude session on the machine - including headless `claude -p`
+children spawned by other plugins, SDK-driven background agents, and
+scheduled/cron runs - which used to produce "mystery audio" about things
+never addressed to you. The hook now gates on:
+
+1. the mute file (`~/.claude/auto-speak-mute`),
+2. `CLAUDE_CODE_ENTRYPOINT` - interactive terminals run as `cli`; headless
+   `claude -p` / SDK sessions run as `sdk-*` and are skipped,
+3. a controlling terminal - the claude process that fired the hook must be
+   attached to a tty; programmatically spawned sessions are detached,
+4. the legacy /tmp cwd guard.
+
+Multiple concurrent **interactive** sessions all speak - that is intended.
+Every skipped session is logged with its reason to `/tmp/auto-speak-skip.txt`.
 
 ## Pair it with voice input
 
@@ -90,8 +111,10 @@ and pipes the result to `say`.
 - **`last_assistant_message`** is the payload field carrying the response text.
 - **macOS has no `timeout` command.** Scripts that use it fail silently.
 - **User-scoped hooks fire for headless sessions too.** Plugins that spawn
-  background `claude -p` runs (e.g. the remember plugin, which runs from /tmp)
-  would have their output spoken aloud. The script exits early when the
-  payload's `cwd` is under /tmp.
-- The last spoken text is written to `/tmp/auto-speak-last.txt` for diagnosing
-  any mystery audio.
+  background `claude -p` runs (e.g. the remember plugin) would have their
+  output spoken aloud. A cwd-based guard is not enough - plugins run their
+  children from arbitrary directories - so the hook gates on session type
+  (entrypoint + controlling tty; see "Which sessions get spoken").
+- The last spoken text (+ its session id) is written to
+  `/tmp/auto-speak-last.txt`, and every skipped session with its reason to
+  `/tmp/auto-speak-skip.txt`, for diagnosing mystery or missing audio.
