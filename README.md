@@ -89,6 +89,37 @@ never addressed to you. The hook now gates on:
 Multiple concurrent **interactive** sessions all speak - that is intended.
 Every skipped session is logged with its reason to `/tmp/auto-speak-skip.txt`.
 
+(In-process subagents - the Agent tool, Workflow agents - fire `SubagentStop`
+rather than `Stop`, so they never trigger the hook at all; the sessions the
+gates exist for are the separate headless claude processes.)
+
+### Verifying the gates
+
+Run a headless session from a normal directory and confirm it stays silent:
+
+```bash
+env -u CLAUDECODE claude -p --model haiku \
+  'Reply with exactly: HEADLESS TEST - if you hear this out loud, the gate failed.'
+```
+
+You should hear nothing, and `/tmp/auto-speak-skip.txt` should show the
+skipped session and which gate caught it:
+
+```
+2026-07-10 12:51:15 session=1fd289a4-... cwd=/Users/corey skipped: headless entrypoint sdk-cli
+```
+
+Then confirm the positive path - an interactive session's hook still speaks:
+
+```bash
+echo '{"cwd":"'$PWD'","last_assistant_message":"Interactive gate test passed: this should be spoken aloud."}' \
+  | bash "$(ls -d ~/.claude/plugins/cache/coreyms/auto-speak/*/scripts/auto-speak.sh | tail -1)"
+```
+
+If audio is missing when it shouldn't be, `/tmp/auto-speak-skip.txt` says why
+the session was skipped; if something speaks that shouldn't have,
+`/tmp/auto-speak-last.txt` names the session that did it.
+
 ## Pair it with voice input
 
 This plugin covers the speaking half of the conversation. For the listening
