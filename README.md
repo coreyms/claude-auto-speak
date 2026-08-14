@@ -34,6 +34,8 @@ VOICE="Tom (Enhanced)"   # any voice from `say -v '?'`; empty = system default
 RATE=210                 # words per minute; macOS default is ~175
 MODE="paragraph"         # sentence | paragraph | full | summary
 TIMBRE=""                # pitch base (~30 deep to ~65 bright); empty = natural
+MEETING_GUARD="mic"      # stay silent while the mic is live; "off" disables
+MIC_IGNORE=""            # device-name substrings the meeting guard ignores
 ```
 
 The config is per machine and survives plugin updates (it lives outside the
@@ -68,8 +70,63 @@ turn.
 
 To stop playback at any time: `killall say`
 
-To mute entirely (e.g. while a fleet of agents is running):
-`touch ~/.claude/auto-speak-mute` - remove the file to resume.
+## Not talking over you
+
+Two independent layers keep auto-speak from interrupting a meeting. Both are
+**global** - every Claude session on the machine obeys them, which matters when
+you run five or seven at once, and neither needs per-session bookkeeping because
+the hook re-reads them on every turn.
+
+### The meeting guard (automatic, on by default)
+
+If anything is capturing audio input, the turn is not spoken. That covers Teams,
+Zoom, Google Meet in a browser, Slack huddles, dictation and recordings, with no
+calendar integration and no per-app detection: speech stops when the call starts
+and comes back when it ends, in every session at once. There is nothing to
+remember and nothing to undo.
+
+`scripts/mic_in_use.py` reads CoreAudio's
+`kAudioDevicePropertyDeviceIsRunningSomewhere` - the flag behind the orange mic
+dot in the menu bar - through `ctypes`. No compiler, no cached binary, no
+privacy permission, works on Intel and Apple Silicon, ~110ms per turn. Only
+**input** devices count, so `say` (output) can never trip the guard on itself.
+
+See what the guard sees:
+
+```bash
+python3 ~/.claude/plugins/cache/coreyms/auto-speak/*/scripts/mic_in_use.py --list
+```
+
+```
+idle   MacBook Pro Microphone
+IN-USE Microsoft Teams Audio
+idle   ZoomAudioDevice
+```
+
+Tuning, in `~/.claude/auto-speak.conf`:
+
+- `MEETING_GUARD="off"` disables it (you take calls on headphones and want
+  speech anyway).
+- `MIC_IGNORE="loopback,blackhole"` ignores devices whose name contains any of
+  those substrings - the fix if a virtual/loopback driver reports itself as
+  permanently running and mutes you for good. `/tmp/auto-speak-skip.txt` names
+  the device that caused each skip, so you can see which one to add.
+
+If the probe cannot run (no `python3`, CoreAudio unavailable) the guard **fails
+open** and speaks: a missed mute beats silently losing speech forever.
+
+### The mute switch (manual, for what the guard cannot see)
+
+```
+/auto-speak:mute      # silence every session, and cut off the sentence in flight
+/auto-speak:unmute    # speech returns everywhere
+```
+
+For someone at your desk, a room full of people, a call on another device, or a
+fleet of agents you want quiet. The mute has no expiry - it holds until you
+unmute. Under the hood it is the file `~/.claude/auto-speak-mute`
+(`touch`/`rm` works just as well), and `/auto-speak:mute` also runs `killall
+say` so the current utterance stops mid-word instead of finishing.
 
 ## Which sessions get spoken
 
@@ -84,7 +141,10 @@ never addressed to you. The hook now gates on:
    `claude -p` / SDK sessions run as `sdk-*` and are skipped,
 3. a controlling terminal - the claude process that fired the hook must be
    attached to a tty; programmatically spawned sessions are detached,
-4. the legacy /tmp cwd guard.
+4. the legacy /tmp cwd guard,
+5. the meeting guard - a live microphone (checked last, so background sessions
+   never pay for the probe; re-checked just before speaking in `summary` mode,
+   where the haiku call is long enough to join a call in).
 
 Multiple concurrent **interactive** sessions all speak - that is intended.
 Every skipped session is logged with its reason to `/tmp/auto-speak-skip.txt`.
@@ -149,3 +209,13 @@ and pipes the result to `say`.
 - The last spoken text (+ its session id) is written to
   `/tmp/auto-speak-last.txt`, and every skipped session with its reason to
   `/tmp/auto-speak-skip.txt`, for diagnosing mystery or missing audio.
+- **Meeting apps are useless as a signal; the microphone is the signal.** Teams
+  and Slack run all day, so process presence says nothing about being in a call.
+  Power-management assertions are held by video playback too. A live audio
+  *input* device is the one thing that means "someone is listening to you right
+  now", and CoreAudio reports it for free, for every app, with no permission
+  prompt.
+- **A guard that can silence you forever has to fail open.** If the mic probe
+  errors, prints something unexpected, or has no interpreter to run in, the hook
+  speaks anyway. The failure mode of a wrong mute is a plugin that appears
+  broken with no error message.

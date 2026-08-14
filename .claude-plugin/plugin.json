@@ -1,6 +1,6 @@
 {
   "name": "auto-speak",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Speaks Claude's responses aloud after each turn using macOS built-in `say` - fully local, no API keys, no cost.",
   "author": {
     "name": "Corey Stoker"
@@ -12,6 +12,8 @@
     "macos",
     "say",
     "accessibility",
-    "voice"
+    "voice",
+    "meetings",
+    "mute"
   ]
 }

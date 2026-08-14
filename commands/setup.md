@@ -57,6 +57,9 @@ RATE=210
 MODE="paragraph"
 ```
 
+If the file already has `MEETING_GUARD` or `MIC_IGNORE` lines, preserve them -
+do not drop settings the user tuned outside this walkthrough.
+
 ## 6. Test end to end
 
 Run the plugin's hook script directly with a simulated payload so the user
@@ -73,6 +76,16 @@ Confirm the user heard it. Remind them: settings live in
 quick toggles exist (`/auto-speak:mode`, `/auto-speak:voice`,
 `/auto-speak:rate`, `/auto-speak:timbre`), and `killall say` stops playback
 mid-readout.
+
+Also tell them how it stays out of their meetings, since that is the part people
+do not expect to be automatic:
+
+- auto-speak goes quiet on its own whenever the microphone is live (Teams, Zoom,
+  Meet, huddles, dictation), in every session at once, and resumes when the call
+  ends - nothing to turn on or off. `MEETING_GUARD="off"` in the conf disables it.
+- `/auto-speak:mute` and `/auto-speak:unmute` are the manual switch for what the
+  mic cannot see (someone at their desk, a call on another device). Mute is
+  global and holds until they unmute.
 
 Finally, mention that Claude Code has a native `/voice` command (not part of
 this plugin) for talking to Claude instead of typing - paired with

@@ -9,6 +9,8 @@ VOICE=""            # empty = system default voice; or any name from `say -v '?'
 RATE=210            # words per minute; macOS default is ~175
 MODE="paragraph"    # sentence | paragraph | full | summary
 TIMBRE=""           # pitch base (~30 deep to ~65 bright); empty = voice default
+MEETING_GUARD="mic" # mic = stay silent while the microphone is live; off = disable
+MIC_IGNORE=""       # comma-separated device-name substrings the guard ignores
 
 CONF="$HOME/.claude/auto-speak.conf"
 [ -f "$CONF" ] && . "$CONF"
@@ -35,8 +37,10 @@ skip() {
 # background agents, scheduled/cron runs. Multiple concurrent INTERACTIVE
 # sessions all speak - that is intended.
 
-# Gate 0 - mute switch: `touch ~/.claude/auto-speak-mute` silences everything
-# (and `killall say` cuts speech already in flight); rm the file to resume.
+# Gate 0 - mute switch: the file ~/.claude/auto-speak-mute silences EVERY
+# session on the machine (it is re-read here each turn, so there is no
+# per-session state to keep in sync). /auto-speak:mute creates it and cuts
+# speech already in flight; /auto-speak:unmute removes it.
 [ -f "$HOME/.claude/auto-speak-mute" ] && skip "muted by ~/.claude/auto-speak-mute"
 
 # Gate 1 - headless entrypoints. Interactive terminal sessions run with
@@ -75,6 +79,32 @@ msg=$(echo "$json" | jq -r '.last_assistant_message // ""' 2>/dev/null)
 
 # Skip if empty or too short
 [ -z "$msg" ] || [ ${#msg} -lt 30 ] && exit 0
+
+# Gate 4 - meeting guard. Never talk over a live microphone: if anything is
+# capturing audio input (Teams, Zoom, Meet in a browser, a Slack huddle,
+# dictation, a recording) this turn goes unspoken. Checked fresh every turn, so
+# no calendar, no timer and nothing to remember - speech stops when the call
+# starts and returns when it ends, in all sessions at once.
+# Undetermined (no python3, CoreAudio unavailable) fails OPEN and speaks: a
+# missed mute beats silently losing speech forever. `say` is output-only, so it
+# can never trip an input-scope check on itself.
+mic_live() {
+    [ "$MEETING_GUARD" = "mic" ] || return 1
+    probe="$(dirname "$0")/mic_in_use.py"
+    [ -f "$probe" ] || return 1
+    for py in /opt/homebrew/bin/python3 /usr/local/bin/python3 python3; do
+        command -v "$py" >/dev/null 2>&1 || continue
+        out=$(AUTO_SPEAK_MIC_IGNORE="$MIC_IGNORE" "$py" "$probe" 2>/dev/null)
+        case "$out" in
+            IN_USE*) mic_devices=${out#IN_USE	}; return 0 ;;
+            IDLE)    return 1 ;;
+        esac
+        break   # python ran but said something unexpected - fail open
+    done
+    return 1
+}
+
+mic_live && skip "microphone in use (${mic_devices:-unknown})"
 
 # Strip markdown that reads badly aloud: fenced code blocks, inline backticks,
 # bold/italic markers, heading hashes, link targets (keep link text)
@@ -122,6 +152,14 @@ case "$MODE" in
 esac
 
 [ -z "$summary" ] && exit 0
+
+# Re-run the meeting guard for summary mode only: the haiku call above takes a
+# few seconds, which is long enough to join a call in. The other modes reach
+# `say` immediately after Gate 4, so a second probe would only add latency.
+if [ "$MODE" = "summary" ]; then
+    mic_live && skip "microphone went live while summarizing (${mic_devices:-unknown})"
+    [ -f "$HOME/.claude/auto-speak-mute" ] && skip "muted while summarizing"
+fi
 
 # Keep a record of the last spoken text + which session it came from
 # (for diagnosing any mystery audio)
