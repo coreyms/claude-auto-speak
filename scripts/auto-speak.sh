@@ -13,7 +13,9 @@ MEETING_GUARD="mic" # mic = stay silent while the microphone is live; off = disa
 MIC_IGNORE=""       # comma-separated device-name substrings the guard ignores
 SPEAK_QUEUE="on"    # on = one session speaks at a time, others queue; off = speak now
 QUEUE_MAX_STALE=0   # drop a queued turn older than N seconds; 0 = never drop
-QUEUE_ANNOUNCE="auto"  # auto = name the project when the voice changes sessions
+QUEUE_ANNOUNCE="auto"  # auto = say who is talking when the voice changes sessions
+QUEUE_LABEL="name"  # name = session name, else project dir; session = also use
+                    # Claude Code's auto-derived name (e.g. "autoflask-3d")
 
 CONF="$HOME/.claude/auto-speak.conf"
 [ -f "$CONF" ] && . "$CONF"
@@ -182,6 +184,45 @@ fi
 # Code SIGKILLs when this hook returns - that is what lets speech outlive the
 # hook, and why this hook can exit immediately instead of blocking its session
 # for the length of the queue.
+# Who is talking. Claude Code keeps a record per live session at
+# ~/.claude/sessions/<pid>.json carrying its `name` and a `nameSource`, where
+# "derived" marks the auto-generated <project>-<suffix> the user never chose.
+# So: speak the session's own name when it has one, and fall back to the project
+# directory - which matters, because several sessions in one repo would otherwise
+# all announce themselves identically. QUEUE_LABEL=session opts into the derived
+# names too (unique per session, less pretty).
+session_label() {
+    label=$(basename "${cwd:-unknown}")
+
+    sid=${CLAUDE_CODE_SESSION_ID:-}
+    [ -n "$sid" ] || sid=$(echo "$json" | jq -r '.session_id // ""' 2>/dev/null)
+    [ -n "$sid" ] || { echo "$label"; return; }
+
+    dir="$HOME/.claude/sessions"
+    [ -d "$dir" ] || { echo "$label"; return; }
+
+    # Newest record first: resuming a session leaves older records behind that
+    # carry the same id under a dead pid.
+    for f in $(ls -t "$dir"/*.json 2>/dev/null); do
+        grep -q "\"$sid\"" "$f" 2>/dev/null || continue
+        [ "$(jq -r '.sessionId // ""' "$f" 2>/dev/null)" = "$sid" ] || continue
+
+        name=$(jq -r '.name // ""' "$f" 2>/dev/null)
+        source=$(jq -r '.nameSource // ""' "$f" 2>/dev/null)
+        if [ -n "$name" ]; then
+            case "$source" in
+                derived) [ "$QUEUE_LABEL" = "session" ] && label="$name" ;;
+                *)       label="$name" ;;
+            esac
+        fi
+        break
+    done
+
+    # A name reaches `say` and a key=value header line, so keep it to one tidy
+    # line of speakable length.
+    printf '%s' "$label" | tr '\r\n' '  ' | cut -c1-48 | sed -E 's/ +$//'
+}
+
 enqueue() {
     [ "$SPEAK_QUEUE" = "on" ] || return 1
     drainer="$SCRIPT_DIR/speak_queue.py"
@@ -202,7 +243,7 @@ enqueue() {
     {
         echo "session=${CLAUDE_CODE_SESSION_ID:-?}"
         echo "cwd=${cwd:-?}"
-        echo "label=$(basename "${cwd:-unknown}")"
+        echo "label=$(session_label)"
         echo "epoch=$stamp"
         echo "voice=$VOICE"
         echo "rate=$RATE"

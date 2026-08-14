@@ -38,7 +38,9 @@ MEETING_GUARD="mic"      # stay silent while the mic is live; "off" disables
 MIC_IGNORE=""            # device-name substrings the meeting guard ignores
 SPEAK_QUEUE="on"         # sessions take turns speaking; "off" = speak immediately
 QUEUE_MAX_STALE=0        # drop a queued turn older than N seconds; 0 = never drop
-QUEUE_ANNOUNCE="auto"    # name the project when the voice changes sessions
+QUEUE_ANNOUNCE="auto"    # say who is talking when the voice changes sessions
+QUEUE_LABEL="name"       # session name, else project dir; "session" = also use
+                         # Claude Code's derived names (e.g. "autoflask-3d")
 ```
 
 The config is per machine and survives plugin updates (it lives outside the
@@ -139,11 +141,21 @@ time, oldest turn first, nothing dropped.
 
 The hook does not speak any more. It spools the text to
 `/tmp/auto-speak-queue/` and hands off to `scripts/speak_queue.py`, which speaks
-the backlog serially. When the queue makes a session wait, the utterance is
-prefixed with the project name ("From autoflask: ...") so you can tell who is
-talking - only when the voice actually changes projects, so a single session
-never narrates its own directory at you. `QUEUE_ANNOUNCE="always"` labels every
-turn, `"off"` never does.
+the backlog serially.
+
+When the queue makes sessions take turns, each utterance says who is talking -
+"From Survey QA Framework: ..." - but only when the voice actually changes
+session, so a single session never narrates its own name at you.
+`QUEUE_ANNOUNCE="always"` labels every turn, `"off"` never does.
+
+The name comes from the session itself. Claude Code keeps a record per live
+session at `~/.claude/sessions/<pid>.json` holding its `name` and a
+`nameSource`, where `"derived"` marks the auto-generated `<project>-<suffix>`
+nobody chose. So a session you have named announces by that name, and an unnamed
+one falls back to its project directory. If you run several sessions in the *same*
+repo, that fallback is ambiguous by definition - either name them, or set
+`QUEUE_LABEL="session"` to use the derived names (`autoflask-3d`), which are
+unique per session but read less naturally.
 
 Two properties worth knowing, because they are what make this safe:
 
