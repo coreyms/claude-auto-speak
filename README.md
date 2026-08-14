@@ -36,6 +36,9 @@ MODE="paragraph"         # sentence | paragraph | full | summary
 TIMBRE=""                # pitch base (~30 deep to ~65 bright); empty = natural
 MEETING_GUARD="mic"      # stay silent while the mic is live; "off" disables
 MIC_IGNORE=""            # device-name substrings the meeting guard ignores
+SPEAK_QUEUE="on"         # sessions take turns speaking; "off" = speak immediately
+QUEUE_MAX_STALE=0        # drop a queued turn older than N seconds; 0 = never drop
+QUEUE_ANNOUNCE="auto"    # name the project when the voice changes sessions
 ```
 
 The config is per machine and survives plugin updates (it lives outside the
@@ -128,6 +131,44 @@ unmute. Under the hood it is the file `~/.claude/auto-speak-mute`
 (`touch`/`rm` works just as well), and `/auto-speak:mute` also runs `killall
 say` so the current utterance stops mid-word instead of finishing.
 
+## Taking turns (several Claudes, one mouth)
+
+Run five or seven sessions at once and they used to finish together and talk over
+each other, losing both messages in the overlap. Now they queue: one voice at a
+time, oldest turn first, nothing dropped.
+
+The hook does not speak any more. It spools the text to
+`/tmp/auto-speak-queue/` and hands off to `scripts/speak_queue.py`, which speaks
+the backlog serially. When the queue makes a session wait, the utterance is
+prefixed with the project name ("From autoflask: ...") so you can tell who is
+talking - only when the voice actually changes projects, so a single session
+never narrates its own directory at you. `QUEUE_ANNOUNCE="always"` labels every
+turn, `"off"` never does.
+
+Two properties worth knowing, because they are what make this safe:
+
+- **The hook returns in milliseconds** instead of blocking for the length of the
+  queue. Serializing inside the hook would hold that session's Stop hook open
+  while it waited, and the hook's 300s timeout would eventually drop the message
+  the queue exists to save. The drainer is spawned in a **new session**
+  (`start_new_session=True`), which escapes the process group Claude Code
+  SIGKILLs when the hook returns - so speech outlives the hook that queued it.
+- **`killall say` stops everything**, not just the sentence you can hear. A
+  backlog would otherwise make that command useless: kill one line, the next
+  starts. The drainer notices `say` died by signal and purges the rest.
+
+Queued items are re-checked at the moment they come up, not when they were
+queued, so the guards still win over a stale backlog: a call that starts while
+you are waiting drops your item, and `/auto-speak:mute` purges the whole queue
+instead of muting "after it finishes". `QUEUE_MAX_STALE=90` additionally drops
+anything that waited longer than 90 seconds; the default `0` never drops, on the
+grounds that late speech beats lost speech. `SPEAK_QUEUE="off"` restores the old
+speak-immediately behavior, and if `python3` is missing the hook falls back to it
+automatically - overlapping audio, but never silence.
+
+`/tmp/auto-speak-queue.log` records every queue decision (what spoke, how long
+it waited, how many were behind it, what was dropped and why).
+
 ## Which sessions get spoken
 
 Only sessions you are actually interacting with. User-scoped Stop hooks fire
@@ -191,8 +232,10 @@ enabled, the loop is fully hands-free: you speak, Claude answers out loud.
 
 A `Stop` hook receives Claude Code's JSON payload on stdin, extracts
 `last_assistant_message` with `jq`, strips markdown that reads badly aloud
-(code fences, backticks, bold/italic markers, heading hashes, link URLs),
-and pipes the result to `say`.
+(code fences, backticks, bold/italic markers, heading hashes, link URLs), and
+spools the result for `scripts/speak_queue.py`, which speaks one turn at a time
+across every session on the machine. With the queue off, or without `python3`,
+the hook calls `say` itself.
 
 ## Lessons baked in (learned the hard way)
 
@@ -219,3 +262,15 @@ and pipes the result to `say`.
   errors, prints something unexpected, or has no interpreter to run in, the hook
   speaks anyway. The failure mode of a wrong mute is a plugin that appears
   broken with no error message.
+- **`start_new_session=True` is the escape hatch from hook teardown.** The
+  process-group SIGKILL that kills backgrounded children does not reach a child
+  in its own session, which is what lets the speech queue outlive the hook.
+  Verified by SIGKILLing a hook's whole process group and watching the child
+  keep running.
+- **A two-step lock is not a lock.** The first version of the queue took the
+  speaking lock by `mkdir`, then wrote its pid inside. A rival drainer read the
+  lock in that gap, saw no owner, assumed it was abandoned, stole it - and both
+  spoke at once, which is the exact bug the queue was written to fix. It now
+  hardlinks a file that already contains the pid, so the name cannot appear
+  before its contents. Locks that a SIGKILL can strand also need a liveness
+  check, or one crash mutes the machine for good.

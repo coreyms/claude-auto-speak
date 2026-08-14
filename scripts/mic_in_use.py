@@ -139,30 +139,37 @@ def device_name(device: int) -> str:
     return f"device {device}"
 
 
-def ignored_patterns() -> list[str]:
-    raw = os.environ.get("AUTO_SPEAK_MIC_IGNORE", "")
+def ignored_patterns(raw: str | None = None) -> list[str]:
+    if raw is None:
+        raw = os.environ.get("AUTO_SPEAK_MIC_IGNORE", "")
     return [p.strip().lower() for p in raw.split(",") if p.strip()]
 
 
-def main() -> int:
-    ignore = ignored_patterns()
-    listing = "--list" in sys.argv
+def live_devices(ignore: list[str] | None = None, listing: bool = False) -> list[str]:
+    """Names of the input devices currently in use, minus the ignored ones.
 
+    Imported by speak_queue.py, which re-checks the guard at the moment it is
+    about to speak rather than trusting a check made when the turn ended.
+    """
+    ignore = ignored_patterns() if ignore is None else ignore
     live = []
     for device in input_devices():
         name = device_name(device)
         skipped = any(pattern in name.lower() for pattern in ignore)
         running = is_running(device)
         if listing:
-            state = "IN-USE" if running else "idle  "
-            print(f"{state} {name}{'   (ignored)' if skipped else ''}")
+            print(f"{'IN-USE' if running else 'idle  '} {name}"
+                  f"{'   (ignored)' if skipped else ''}")
         if running and not skipped:
             live.append(name)
+    return live
 
-    if listing:
-        return 0
 
-    print(f"IN_USE\t{', '.join(live)}" if live else "IDLE")
+def main() -> int:
+    listing = "--list" in sys.argv
+    live = live_devices(listing=listing)
+    if not listing:
+        print(f"IN_USE\t{', '.join(live)}" if live else "IDLE")
     return 0
 
 

@@ -11,9 +11,14 @@ MODE="paragraph"    # sentence | paragraph | full | summary
 TIMBRE=""           # pitch base (~30 deep to ~65 bright); empty = voice default
 MEETING_GUARD="mic" # mic = stay silent while the microphone is live; off = disable
 MIC_IGNORE=""       # comma-separated device-name substrings the guard ignores
+SPEAK_QUEUE="on"    # on = one session speaks at a time, others queue; off = speak now
+QUEUE_MAX_STALE=0   # drop a queued turn older than N seconds; 0 = never drop
+QUEUE_ANNOUNCE="auto"  # auto = name the project when the voice changes sessions
 
 CONF="$HOME/.claude/auto-speak.conf"
 [ -f "$CONF" ] && . "$CONF"
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 
 # Ensure homebrew tools (jq) and the claude CLI are findable even if the hook
 # env has a minimal PATH
@@ -88,20 +93,29 @@ msg=$(echo "$json" | jq -r '.last_assistant_message // ""' 2>/dev/null)
 # Undetermined (no python3, CoreAudio unavailable) fails OPEN and speaks: a
 # missed mute beats silently losing speech forever. `say` is output-only, so it
 # can never trip an input-scope check on itself.
-mic_live() {
-    [ "$MEETING_GUARD" = "mic" ] || return 1
-    probe="$(dirname "$0")/mic_in_use.py"
-    [ -f "$probe" ] || return 1
-    for py in /opt/homebrew/bin/python3 /usr/local/bin/python3 python3; do
-        command -v "$py" >/dev/null 2>&1 || continue
-        out=$(AUTO_SPEAK_MIC_IGNORE="$MIC_IGNORE" "$py" "$probe" 2>/dev/null)
-        case "$out" in
-            IN_USE*) mic_devices=${out#IN_USE	}; return 0 ;;
-            IDLE)    return 1 ;;
-        esac
-        break   # python ran but said something unexpected - fail open
+PY=""
+find_python() {
+    [ -n "$PY" ] && return 0
+    for p in /opt/homebrew/bin/python3 /usr/local/bin/python3 python3; do
+        if command -v "$p" >/dev/null 2>&1; then
+            PY=$(command -v "$p")
+            return 0
+        fi
     done
     return 1
+}
+
+mic_live() {
+    [ "$MEETING_GUARD" = "mic" ] || return 1
+    probe="$SCRIPT_DIR/mic_in_use.py"
+    [ -f "$probe" ] || return 1
+    find_python || return 1
+    out=$(AUTO_SPEAK_MIC_IGNORE="$MIC_IGNORE" "$PY" "$probe" 2>/dev/null)
+    case "$out" in
+        IN_USE*) mic_devices=${out#IN_USE	}; return 0 ;;
+        IDLE)    return 1 ;;
+    esac
+    return 1   # python ran but said something unexpected - fail open
 }
 
 mic_live && skip "microphone in use (${mic_devices:-unknown})"
@@ -161,26 +175,81 @@ if [ "$MODE" = "summary" ]; then
     [ -f "$HOME/.claude/auto-speak-mute" ] && skip "muted while summarizing"
 fi
 
-# Keep a record of the last spoken text + which session it came from
-# (for diagnosing any mystery audio)
-{
-    echo "$(date '+%Y-%m-%d %H:%M:%S') session=${CLAUDE_CODE_SESSION_ID:-?} cwd=${cwd:-?}"
-    echo "$summary"
-} > /tmp/auto-speak-last.txt
+# ---- Hand the words to a mouth -----------------------------------------------
+# Preferred path: spool the text and let scripts/speak_queue.py say it, so the
+# several sessions you run at once take turns instead of talking over each other.
+# The drainer is spawned in a NEW SESSION, which escapes the process group Claude
+# Code SIGKILLs when this hook returns - that is what lets speech outlive the
+# hook, and why this hook can exit immediately instead of blocking its session
+# for the length of the queue.
+enqueue() {
+    [ "$SPEAK_QUEUE" = "on" ] || return 1
+    drainer="$SCRIPT_DIR/speak_queue.py"
+    [ -f "$drainer" ] || return 1
+    find_python || return 1
 
-# Apply timbre via Apple's embedded speech command [[pbas N]] (pitch base).
-# Honored by the Enhanced/Premium voices; harmless if a voice ignores it.
-[ -n "$TIMBRE" ] && summary="[[pbas $TIMBRE]] $summary"
+    queue_dir=/tmp/auto-speak-queue
+    mkdir -p "$queue_dir" 2>/dev/null || return 1
 
-# Speak it in the FOREGROUND. Claude Code kills the hook's process group on exit,
-# so backgrounding (even with nohup/disown) gets the speak process SIGKILLed.
-# Fall back to the system default voice if the configured one isn't installed.
-# (To cut speech short at any time: killall say)
-if [ -n "$VOICE" ]; then
-    say -v "$VOICE" -r "$RATE" "$summary" </dev/null >/dev/null 2>&1 \
-        || say -r "$RATE" "$summary" </dev/null >/dev/null 2>&1
-else
-    say -r "$RATE" "$summary" </dev/null >/dev/null 2>&1
-fi
+    # Microseconds, not `date +%s`: several sessions routinely finish inside the
+    # same second, and a whole-second name would order them by pid string
+    # ("1000" sorts before "999") instead of by who actually finished first.
+    stamp=$("$PY" -c 'import time; print(f"{time.time():.6f}")' 2>/dev/null) || return 1
+
+    # Written to a temp name and moved into place, so the drainer can never read
+    # a half-written item. Sorting by filename = oldest turn speaks first.
+    staging="$queue_dir/.staging.$$"
+    {
+        echo "session=${CLAUDE_CODE_SESSION_ID:-?}"
+        echo "cwd=${cwd:-?}"
+        echo "label=$(basename "${cwd:-unknown}")"
+        echo "epoch=$stamp"
+        echo "voice=$VOICE"
+        echo "rate=$RATE"
+        echo "timbre=$TIMBRE"
+        echo "guard=$MEETING_GUARD"
+        echo "mic_ignore=$MIC_IGNORE"
+        echo "stale=$QUEUE_MAX_STALE"
+        echo "announce=$QUEUE_ANNOUNCE"
+        echo ""
+        echo "$summary"
+    } > "$staging" 2>/dev/null || return 1
+    mv "$staging" "$queue_dir/$stamp.$$.speak" 2>/dev/null || {
+        rm -f "$staging"
+        return 1
+    }
+
+    # Always spawn; a drainer that finds another one already holding the
+    # speaking lock exits immediately, so this is a no-op when one is running.
+    "$PY" -c 'import subprocess, sys
+subprocess.Popen([sys.executable, sys.argv[1]], start_new_session=True,
+                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                 stderr=subprocess.DEVNULL)' "$drainer" >/dev/null 2>&1 || return 1
+    return 0
+}
+
+# Fallback: speak here and now, in the FOREGROUND (backgrounding gets SIGKILLed
+# with the hook's process group). Used when the queue is off or python3 is
+# missing - overlapping audio, but never silence. Voice falls back to the system
+# default if the configured one isn't installed. (Cut speech short: killall say)
+speak_now() {
+    {
+        echo "$(date '+%Y-%m-%d %H:%M:%S') session=${CLAUDE_CODE_SESSION_ID:-?} cwd=${cwd:-?}"
+        echo "$summary"
+    } > /tmp/auto-speak-last.txt
+
+    # Timbre via Apple's embedded speech command [[pbas N]] (pitch base):
+    # honored by Enhanced/Premium voices, harmless if a voice ignores it.
+    [ -n "$TIMBRE" ] && summary="[[pbas $TIMBRE]] $summary"
+
+    if [ -n "$VOICE" ]; then
+        say -v "$VOICE" -r "$RATE" "$summary" </dev/null >/dev/null 2>&1 \
+            || say -r "$RATE" "$summary" </dev/null >/dev/null 2>&1
+    else
+        say -r "$RATE" "$summary" </dev/null >/dev/null 2>&1
+    fi
+}
+
+enqueue || speak_now
 
 exit 0
