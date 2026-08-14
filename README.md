@@ -123,9 +123,20 @@ open** and speaks: a missed mute beats silently losing speech forever.
 ### The mute switch (manual, for what the guard cannot see)
 
 ```
-/auto-speak:mute      # silence every session, and cut off the sentence in flight
+/auto-speak:stop      # shut up NOW: kill the sentence and clear the queue (one-shot)
+/auto-speak:mute      # silence every session until you unmute
 /auto-speak:unmute    # speech returns everywhere
 ```
+
+`/auto-speak:stop` is the interrupt. Escape used to serve this purpose, but only
+as a side effect: `say` ran inside the hook's process group, so cancelling the
+turn killed the audio with it. The queue deliberately runs outside that group -
+that is what lets speech survive the hook and take turns between sessions - so
+Escape cannot reach it any more. The command kills the current utterance, clears
+everything queued behind it, and arms a one-shot skip so its own confirmation is
+not read aloud; the next turn speaks normally. `killall say` from any terminal
+does the same thing (the drainer treats death-by-signal as "stop talking" and
+purges the rest).
 
 For someone at your desk, a room full of people, a call on another device, or a
 fleet of agents you want quiet. The mute has no expiry - it holds until you

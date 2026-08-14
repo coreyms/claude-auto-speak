@@ -28,6 +28,8 @@ bring it back.
   confirmation reply will not be spoken, which is the expected behavior.
 - If the file already exists, auto-speak was already muted. Say so briefly and
   still run `killall say`.
+- For a one-shot "shut up right now" that clears the queue and lets the next turn
+  speak normally, `/auto-speak:stop` is the better fit. Mute is the lasting one.
 - You do not need this just because you are joining a call: the meeting guard
   already keeps auto-speak silent on its own whenever the microphone is live.
   This command is for the cases the guard cannot see - someone walked up to your

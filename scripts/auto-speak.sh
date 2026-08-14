@@ -50,6 +50,17 @@ skip() {
 # speech already in flight; /auto-speak:unmute removes it.
 [ -f "$HOME/.claude/auto-speak-mute" ] && skip "muted by ~/.claude/auto-speak-mute"
 
+# Gate 0b - one-shot silence for THIS session, consumed on the next turn.
+# /auto-speak:stop leaves this behind so its own confirmation does not get read
+# aloud - a command whose job is silence must not start talking to acknowledge
+# itself. Consumed before every other gate so a turn that was going to be
+# skipped anyway (mic live, too short) cannot leave the flag armed for later.
+sid_now=${CLAUDE_CODE_SESSION_ID:-$(echo "$json" | jq -r '.session_id // ""' 2>/dev/null)}
+if [ -n "$sid_now" ] && [ -f "/tmp/auto-speak-skip-next.$sid_now" ]; then
+    rm -f "/tmp/auto-speak-skip-next.$sid_now"
+    skip "one-shot skip after /auto-speak:stop"
+fi
+
 # Gate 1 - headless entrypoints. Interactive terminal sessions run with
 # CLAUDE_CODE_ENTRYPOINT=cli; `claude -p` and SDK-driven agents get sdk-*
 # values. Hooks inherit the owning session's environment.
