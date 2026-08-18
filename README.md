@@ -128,6 +128,22 @@ open** and speaks: a missed mute beats silently losing speech forever.
 /auto-speak:unmute    # speech returns everywhere
 ```
 
+`/auto-speak:stop` is the interrupt. Escape used to serve this purpose, but only
+as a side effect: `say` ran inside the hook's process group, so cancelling the
+turn killed the audio with it. The queue deliberately runs outside that group -
+that is what lets speech survive the hook and take turns between sessions - so
+Escape cannot reach it any more. The command kills the current utterance, clears
+everything queued behind it, and arms a one-shot skip so its own confirmation is
+not read aloud; the next turn speaks normally. `killall say` from any terminal
+does the same thing (the drainer treats death-by-signal as "stop talking" and
+purges the rest).
+
+For someone at your desk, a room full of people, a call on another device, or a
+fleet of agents you want quiet. The mute has no expiry - it holds until you
+unmute. Under the hood it is the file `~/.claude/auto-speak-mute`
+(`touch`/`rm` works just as well), and `/auto-speak:mute` also runs `killall
+say` so the current utterance stops mid-word instead of finishing.
+
 ### A button or hotkey (Keyboard Maestro, Stream Deck, Shortcuts)
 
 Stopping is pure shell against stable `/tmp` paths - no Claude turn involved - so
@@ -156,22 +172,6 @@ cp "$(dirname "$(ls -d ~/.claude/plugins/cache/coreyms/auto-speak/*/scripts/stop
 Then the button (or any terminal) runs `auto-speak-stop`. The script notices
 whether a Claude session invoked it and only arms the one-shot reply-skip in that
 case - a hotkey has no turn to silence.
-
-`/auto-speak:stop` is the interrupt. Escape used to serve this purpose, but only
-as a side effect: `say` ran inside the hook's process group, so cancelling the
-turn killed the audio with it. The queue deliberately runs outside that group -
-that is what lets speech survive the hook and take turns between sessions - so
-Escape cannot reach it any more. The command kills the current utterance, clears
-everything queued behind it, and arms a one-shot skip so its own confirmation is
-not read aloud; the next turn speaks normally. `killall say` from any terminal
-does the same thing (the drainer treats death-by-signal as "stop talking" and
-purges the rest).
-
-For someone at your desk, a room full of people, a call on another device, or a
-fleet of agents you want quiet. The mute has no expiry - it holds until you
-unmute. Under the hood it is the file `~/.claude/auto-speak-mute`
-(`touch`/`rm` works just as well), and `/auto-speak:mute` also runs `killall
-say` so the current utterance stops mid-word instead of finishing.
 
 ## Taking turns (several Claudes, one mouth)
 
