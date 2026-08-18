@@ -37,3 +37,6 @@ Then confirm in ONE short line, mentioning how many queued turns you cleared.
   silence use `/auto-speak:mute` (holds until `/auto-speak:unmute`).
 - `killall say` on its own does the same thing from any terminal, if you have one
   closer to hand than a Claude prompt.
+- The same two commands are shipped as `scripts/stop.sh` for hotkeys and buttons
+  (Keyboard Maestro, Stream Deck, a terminal). If `auto-speak-stop` is on PATH,
+  run that instead of the inline commands above - it is the same logic.

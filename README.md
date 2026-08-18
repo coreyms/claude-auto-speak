@@ -128,6 +128,35 @@ open** and speaks: a missed mute beats silently losing speech forever.
 /auto-speak:unmute    # speech returns everywhere
 ```
 
+### A button or hotkey (Keyboard Maestro, Stream Deck, Shortcuts)
+
+Stopping is pure shell against stable `/tmp` paths - no Claude turn involved - so
+it can hang off a physical button or a global hotkey, which beats a slash command
+when every Claude window is buried behind a meeting. In a Keyboard Maestro
+"Execute Shell Script" action:
+
+```sh
+/usr/bin/killall say 2>/dev/null
+/bin/rm -f /tmp/auto-speak-queue/*.speak
+exit 0
+```
+
+Absolute paths because automation shells start with almost no `PATH`, and
+`exit 0` because `killall` reports failure when nothing was playing and KM treats
+that as a failed action. `scripts/stop.sh` is the same thing as a maintained
+file, but **do not point an automation at the plugin's copy** - it lives under a
+versioned path (`.../auto-speak/1.10.0/scripts/stop.sh`) that moves on every
+update. Install a stable copy instead:
+
+```bash
+cp "$(dirname "$(ls -d ~/.claude/plugins/cache/coreyms/auto-speak/*/scripts/stop.sh | sort -V | tail -1)")/stop.sh" \
+   ~/.local/bin/auto-speak-stop
+```
+
+Then the button (or any terminal) runs `auto-speak-stop`. The script notices
+whether a Claude session invoked it and only arms the one-shot reply-skip in that
+case - a hotkey has no turn to silence.
+
 `/auto-speak:stop` is the interrupt. Escape used to serve this purpose, but only
 as a side effect: `say` ran inside the hook's process group, so cancelling the
 turn killed the audio with it. The queue deliberately runs outside that group -
