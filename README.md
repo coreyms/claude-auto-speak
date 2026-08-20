@@ -1,3 +1,24 @@
+> ## Moved
+>
+> auto-speak now lives in **[coreyms/claude-plugins](https://github.com/coreyms/claude-plugins)**,
+> alongside the rest of my plugins. This repo is archived and will not get
+> further updates.
+>
+> To switch over (your settings and voice config are untouched):
+>
+> ```
+> /plugin marketplace remove coreyms
+> /plugin marketplace add coreyms/claude-plugins
+> /plugin install auto-speak@corey-plugins
+> ```
+>
+> Note the marketplace name changed from `coreyms` to `corey-plugins`, so the
+> plugin id is now `auto-speak@corey-plugins`. Restart Claude Code afterwards:
+> a running session keeps the old plugin directory until it restarts.
+>
+> The full history came along with it, so `git log` in the new repo still shows
+> everything below.
+
 # claude-auto-speak
 
 Speaks Claude Code's responses aloud after each turn using macOS built-in `say`.
