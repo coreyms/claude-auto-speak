@@ -9,11 +9,11 @@
 > ```
 > /plugin marketplace remove coreyms
 > /plugin marketplace add coreyms/claude-plugins
-> /plugin install auto-speak@corey-plugins
+> /plugin install auto-speak@toolshed
 > ```
 >
-> Note the marketplace name changed from `coreyms` to `corey-plugins`, so the
-> plugin id is now `auto-speak@corey-plugins`. Restart Claude Code afterwards:
+> Note the marketplace name changed from `coreyms` to `toolshed`, so the
+> plugin id is now `auto-speak@toolshed`. Restart Claude Code afterwards:
 > a running session keeps the old plugin directory until it restarts.
 >
 > The full history came along with it, so `git log` in the new repo still shows
